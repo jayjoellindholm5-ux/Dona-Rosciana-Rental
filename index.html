@@ -193,6 +193,50 @@ main>section{min-height:auto}
 }
 @media(max-width:700px){input,select,textarea{font-size:16px}.two{grid-template-columns:1fr}main{padding:8px}.lc{padding:24px 18px}.toast{left:14px;right:14px;max-width:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ===== Presentation polish ===== */
+body{background:radial-gradient(1200px 500px at 85% -10%,#fde9c4 0,transparent 60%),radial-gradient(900px 500px at -10% 110%,#dbe6ff 0,transparent 55%),#f6f1e3;background-attachment:fixed}
+#login{background:linear-gradient(145deg,#0f172a 0,#1b2a4a 55%,#3b2a12 120%)}
+.lc{border-radius:20px;padding:34px 28px;gap:16px;border:1px solid rgba(255,255,255,.4)}
+.lc .logo{width:56px;height:56px;border-radius:16px}.lc h1{font-size:28px}
+header{background:linear-gradient(90deg,#0f172a,#1b2a4a);padding:12px 24px;border-bottom:3px solid var(--a)}
+.hdr-stat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:6px 16px}
+.hb{border-radius:999px;padding:7px 14px}
+.card{border-radius:16px;border:1px solid rgba(226,232,240,.9);box-shadow:0 1px 2px rgba(15,23,42,.05),0 8px 24px rgba(15,23,42,.06)}
+.hd h2,.top h2{letter-spacing:-.02em}
+#sq{border-radius:999px;padding-top:10px;padding-bottom:10px;box-shadow:var(--sh)}
+.btn{border-radius:10px}.btn.pri{background:linear-gradient(180deg,#26385e,#1b2a4a)}
+#ad{padding:11px;font-size:14px}
+/* tenant cards */
+.tc{position:relative;border-radius:14px;border-left:5px solid var(--c,#cbd5e1);box-shadow:var(--sh)}
+.tc.on{background:linear-gradient(160deg,#132238,#1b2f4f);border-left-color:var(--c);box-shadow:0 10px 30px rgba(15,23,42,.3)}
+.who{display:flex;gap:10px;align-items:center;min-width:0}
+.av{width:38px;height:38px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;font-weight:800;font-size:13px;color:#fff;background:linear-gradient(135deg,var(--c,#64748b),color-mix(in srgb,var(--c,#64748b) 55%,#0f172a))}
+.tc>small{font-size:11px}
+/* stat strip */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat{background:#fff;border:1px solid var(--b);border-radius:14px;padding:12px 14px;box-shadow:var(--sh);display:flex;flex-direction:column;gap:2px;border-top:4px solid var(--c)}
+.stat small{text-transform:uppercase;letter-spacing:.06em;font-weight:700;font-size:10px}
+.stat b{font-size:20px;letter-spacing:-.02em;color:var(--ink)}
+/* tabs & checklist */
+.tabs{background:#e7e2d3;padding:4px;border-radius:999px}
+.tab{border-radius:999px;padding:7px 14px}
+.tab.on{background:linear-gradient(180deg,#26385e,#1b2a4a)}
+.bar{height:10px;border-radius:99px;background:#e9eef5}
+.bar i{background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:99px}
+.pg span{background:var(--pl);padding:2px 10px;border-radius:99px;font-size:13px}
+.items{border-radius:12px;background:#fcfcfd}
+label.it{border-radius:10px;padding:11px 12px}
+.card.top{background:linear-gradient(135deg,#fff,#fbf6ea)}
+select#ss{border-radius:10px;border-color:var(--a);background:#fffaf0}
+/* side panels */
+.kv{border-bottom:1px solid #f1f5f9}.kv:last-child{border-bottom:0}
+.ct{border-radius:12px}.em{border-radius:10px}
+dialog{border-radius:20px}.dh{background:linear-gradient(90deg,#f8fafc,#fdf6e7)}
+.toast{border-radius:12px}
+.empty{background:rgba(255,255,255,.6)}
+@media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr)}.hdr-stat{display:none}.tab{padding:7px 10px}}
+@media print{header,#colT,#colO,.tabs .tab:not(.on),.row .btn{display:none!important}body{background:#fff}}
 </style>
 </head>
 <body>
@@ -501,12 +545,12 @@ function renderT(){
     }
 
     return `
-      <div class="tc${isSelected?" on":""}" data-id="${t.id}">
+      <div class="tc${isSelected?" on":""}" data-id="${t.id}" style="--c:${ST[s][1]}">
         <div class="tc-top">
-          <div>
+          <div class="who"><span class="av">${h((t.name||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase())}</span><div>
             <b>${h(t.name)}</b>
             <small>${h(t.unit)} · Due on ${ord(t.due_day||5)}</small>
-          </div>
+          </div></div>
           <div class="r">
             <i class="bd" style="--c:${ST[s][1]}">${ST[s][0]}</i>
             <b>${peso(t.rent)}</b>
@@ -519,12 +563,19 @@ function renderT(){
   }).join("")||`<p class="empty">${S.tenants.length?"No matching tenants.":"No tenants yet."}</p>`;
 }
 
+const TI={Daily:"☀️",Billing:"🧾",Annual:"📆","Move-In":"📦","Move-Out":"🚪",Emergency:"🚨"};
+function statStrip(){
+  const st=S.tenants.map(status),sum=f=>S.tenants.filter((_,i)=>f(st[i])).reduce((a,t)=>a+ +t.rent,0),cnt=f=>st.filter(f).length;
+  const card=(l,v,c)=>`<div class="stat" style="--c:${c}"><small>${l}</small><b>${v}</b></div>`;
+  return `<div class="stats">${card("Collected",peso(sum(x=>x==="paid")),"#16a34a")}${card("Awaiting payment",cnt(x=>x==="unpaid"||x==="late"),"#d97706")}${card("Overdue",cnt(x=>x==="overdue"),"#dc2626")}${card("Vacant units",cnt(x=>x==="vacant"),"#0d9488")}</div>`;
+}
 function renderD(){
   const t=act(),c=$("colD");
   if(!t){c.innerHTML='<p class="empty">Select or add a tenant to see their checklists.</p>';return}
   const s=status(t),items=L[S.tab];
 
   c.innerHTML=`
+  ${statStrip()}
   <div class="card top">
     <div>
       <h2>${h(t.name)} <small>— ${h(t.unit)}</small></h2>
@@ -538,7 +589,7 @@ function renderD(){
   <div class="tabs">
     ${Object.keys(L).map(k=>{
       const cnt=L[k].filter((_,i)=>S.prog[`${t.id}|${k}|${i}`]).length;
-      return `<button class="tab${k===S.tab?" on":""}" data-tab="${k}">${k} <span class="tab-badge">${cnt}/${L[k].length}</span></button>`;
+      return `<button class="tab${k===S.tab?" on":""}" data-tab="${k}">${TI[k]||""} ${k} <span class="tab-badge">${cnt}/${L[k].length}</span></button>`;
     }).join("")}
   </div>
 
