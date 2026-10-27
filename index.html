@@ -253,6 +253,7 @@ main>section{min-height:auto}
   </main>
 </div>
 
+<dialog id="cdlg"><div class="dw"><div class="dh"><h3 id="cdt"></h3></div><div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px"><p id="cdm" style="font-size:13px"></p><div class="row sp"><button type="button" class="btn" id="cmCancel" style="flex:1">Cancel</button><button type="button" class="btn ghost" id="cmOk" style="flex:1">Confirm</button></div></div></div></dialog>
 <dialog id="dlg"><div class="dw"><div class="dh"><h3 id="dt"></h3><button class="x" id="dx" aria-label="Close">×</button></div><div id="db"></div></div></dialog>
 
 <script>
@@ -277,26 +278,18 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function confirmModal(title, message, confirmText="Confirm", isDestructive=true){
   return new Promise(resolve => {
-    open(title, `
-      <div style="display:flex;flex-direction:column;gap:14px">
-        <p style="font-size:13px;color:var(--ink)">${h(message)}</p>
-        <div class="row sp" style="margin-top:6px">
-          <button type="button" class="btn" id="cmCancel" style="flex:1">Cancel</button>
-          <button type="button" class="btn ${isDestructive?'ghost':'pri'}" id="cmOk" style="flex:1">${h(confirmText)}</button>
-        </div>
-      </div>
-    `, false, false);
-    const cleanup = (val) => {
-      dlg.close();
-      resolve(val);
-    };
-    $("cmCancel").onclick = () => cleanup(false);
-    $("cmOk").onclick = () => cleanup(true);
-    const handleClose = () => {
-      dlg.removeEventListener('close', handleClose);
-      resolve(false);
-    };
-    dlg.addEventListener('close', handleClose, {once: true});
+    const d=$("cdlg");
+    $("cdt").textContent=title;
+    $("cdm").textContent=message;
+    const ok=$("cmOk");
+    ok.textContent=confirmText;
+    ok.className="btn "+(isDestructive?"ghost":"pri");
+    let result=false;
+    const done=v=>{result=v;d.close()};
+    $("cmCancel").onclick=()=>done(false);
+    ok.onclick=()=>done(true);
+    d.addEventListener("close",()=>resolve(result),{once:true});
+    d.showModal();
   });
 }
 
@@ -307,10 +300,6 @@ setInterval(()=>{
   if(clockEl) clockEl.textContent=d.toLocaleString('en-US',options);
 },1000);
 
-if (window.Notification && Notification.permission !== "granted") {
-  Notification.requestPermission();
-}
-
 function checkCalendarNotifications() {
   if (!window.Notification || Notification.permission !== "granted") return;
   const nowStr = today();
@@ -320,8 +309,7 @@ function checkCalendarNotifications() {
   S.events.forEach(ev => {
     if (ev.date === nowStr && !notifiedList.includes(ev.id)) {
       new Notification("📅 Rental Reminder: " + ev.title, {
-        body: ev.note || "You have an event scheduled for today.",
-        icon: "🏠"
+        body: ev.note || "You have an event scheduled for today."
       });
       notifiedList.push(ev.id);
       localStorage.setItem(notifiedKey, JSON.stringify(notifiedList));
@@ -448,13 +436,13 @@ $("lf").onsubmit=async e=>{
 $("bo").onclick=()=>sb.auth.signOut();
 sb.auth.onAuthStateChange((ev,s)=>{
   if(s&&["INITIAL_SESSION","SIGNED_IN"].includes(ev))setTimeout(boot,0);
-  else if(!s){$("app").hidden=true;$("login").hidden=false;$("lb").disabled=false;dlg.open&&dlg.close();hideLoader()}
+  else if(!s){S.tenants=[];S.tid=null;S.dirty=false;$("pw").value="";$("app").hidden=true;$("login").hidden=false;$("lb").disabled=false;dlg.open&&dlg.close();hideLoader()}
 });
 async function boot(){
   if(booting)return;booting=true;
   try{
     const{data:{user}}=await sb.auth.getUser();
-    const m=await sb.from("managers").select("is_approved").eq("email",user.email).maybeSingle();
+    const m=await sb.from("managers").select("is_approved").eq("email",(user.email||"").toLowerCase()).maybeSingle();
     if(!m.data?.is_approved){await sb.auth.signOut();throw new Error("This account isn't approved as a manager yet. Ask the owner to approve it.")}
     await loadAll();$("login").hidden=true;$("app").hidden=false;render();
   }catch(e){toast(e.message,true);$("login").hidden=false}
@@ -464,7 +452,7 @@ async function boot(){
 function render(){
   renderT();renderD();renderO();
   const n=S.events.filter(e=>e.date===today()).length;$("cb").textContent=n;$("cb").hidden=!n;
-  const totalRent=S.tenants.reduce((a,t)=>a+ +t.rent,0);
+  const totalRent=S.tenants.filter(t=>!["vacant","maintenance"].includes(status(t))).reduce((a,t)=>a+ +t.rent,0);
   $("hdrRent").textContent=peso(totalRent);
   $("tenantCount").textContent=`${S.tenants.length} total units`;
 }
@@ -483,6 +471,7 @@ function renderT(){
         <div class="tc-meta">
           <div>📞 ${h(t.phone||"no phone")}</div>
           <div>📅 Lease ends: ${h(t.lease_end||"Not set")}</div>
+          ${s!=="paid"&&!["vacant","maintenance"].includes(s)?`<button id="mp" class="btn pri t-btn wide">💰 Mark Paid This Month</button>`:""}
           <div class="tc-acts">
             <button id="et" class="btn t-btn">✏️ Edit</button>
             <button id="th" class="btn t-btn">📜 History</button>
@@ -548,7 +537,7 @@ function renderD(){
 
   <div class="tabs">
     ${Object.keys(L).map(k=>{
-      const cnt=L[k].filter((_,i)=>S.prog[`${t.id}|${k}\vert{}${i}`]).length;
+      const cnt=L[k].filter((_,i)=>S.prog[`${t.id}|${k}|${i}`]).length;
       return `<button class="tab${k===S.tab?" on":""}" data-tab="${k}">${k} <span class="tab-badge">${cnt}/${L[k].length}</span></button>`;
     }).join("")}
   </div>
@@ -588,13 +577,15 @@ function renderO(){
   const lateC=S.tenants.filter(t=>status(t)==="late").length;
   const overC=S.tenants.filter(t=>status(t)==="overdue").length;
   const vacC=S.tenants.filter(t=>status(t)==="vacant").length;
+  const coll=S.tenants.filter(t=>status(t)==="paid").reduce((a,t)=>a+ +t.rent,0);
 
   $("colO").innerHTML=`
   <div class="card sum">
     <div class="hd"><h3>Rent Overview</h3><span class="mut" style="font-size:11px"><b class="ok">${paidC} paid</b> · <b>${lateC} late</b> · <b class="bad">${overC} overdue</b> · <b>${vacC} vacant</b></span></div>
     <div class="sec-lbl" style="margin-top:10px">Monthly Unit Breakdown</div>
     <div class="list">${S.tenants.map(t=>`<div class="kv"><span><i class="dot" style="--c:${ST[status(t)][1]}"></i><b>${h(t.unit)}</b> (${h(t.name)})</span><b>${peso(t.rent)}</b></div>`).join("")}</div>
-    <div class="kv" style="border-top:2px solid var(--b);margin-top:10px;padding-top:10px"><span>Total Expected</span><b style="color:var(--a)">${peso(exp)}</b></div>
+    <div class="kv" style="border-top:2px solid var(--b);margin-top:10px;padding-top:10px"><span>Collected this month</span><b class="ok">${peso(coll)}</b></div>
+    <div class="kv"><span>Total Expected</span><b style="color:var(--a)">${peso(exp)}</b></div>
   </div>
 
   <div class="card ctc">
@@ -658,6 +649,7 @@ const handleTenantActions = async (e) => {
     if (b.id === "et") tenantForm(t);
     else if (b.id === "th") history(t.id);
     else if (b.id === "dtnt") deleteTenant(t.id);
+    else if (b.id === "mp") setStatus("paid");
     else if (b.dataset.doc) delDoc(b.dataset.doc, b.dataset.path);
   }
 };
@@ -691,7 +683,9 @@ window.addEventListener("pagehide", autoSaveOnLeave);
 window.addEventListener("beforeunload", autoSaveOnLeave);
 
 async function setStatus(v){const t=act();await run(async()=>{const r=await q(sb.from("tenants").update({manual_status:["paid","unpaid"].includes(v)?null:v,last_paid_month:v==="paid"?month():""}).eq("id",t.id).select().single());Object.assign(t,r);render()},"Status updated.")}
-async function save(reset){
+let saving=false;
+async function save(r){if(saving)return;saving=true;try{await _save(r)}finally{saving=false}}
+async function _save(reset){
   const t=act(),tab=S.tab;
   if(!t) return;
   if(reset){
@@ -779,7 +773,9 @@ function fmt(d){
   const lb={name:"Name",unit:"Unit",rent:"Rent",due_day:"Due day",phone:"Phone",lease_end:"Lease end",last_paid_month:"Last paid month",manual_status:"Status override",category:"Category",file_name:"File",file_path:"File Path"};
   return Object.entries(lb).filter(([k])=>d.before?.[k]!==d.after?.[k]).map(([k,v])=>`${v}: ${d.before?.[k]??"—"} → ${d.after?.[k]??"—"}`).join("\n")||JSON.stringify(d,null,2);
 }
+let histTid=null;
 async function history(tid,page=0){
+  histTid=tid||null;
   const P=30,who=S.tenants.find(t=>t.id===tid);
   open(who?`History · ${who.name}`:"Activity History",'<p class="empty">Loading records…</p>', false, true);
   await run(async()=>{
@@ -798,7 +794,7 @@ async function history(tid,page=0){
       run(async()=>{
         let query=sb.from("activity_logs").delete();
         if(tid)query=query.eq("tenant_id",tid);
-        else query=query.neq("id",0);
+        else query=query.not("id","is",null);
         await q(query);
         history(tid,0);
       },"History cleared.");
@@ -840,9 +836,10 @@ $("db").onsubmit=e=>{
 $("db").onclick=async e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.delLog){
+    e.preventDefault();e.stopPropagation();
     const confirmed = await confirmModal("Delete Log", "Delete this activity record?");
     if(!confirmed)return;
-    run(async()=>{await q(sb.from("activity_logs").delete().eq("id",b.dataset.delLog));const who=S.tenants.find(t=>document.getTitle?.()?.includes(t.name));history(who?.id||null)},"Log deleted.");
+    run(async()=>{await q(sb.from("activity_logs").delete().eq("id",b.dataset.delLog));history(histTid)},"Log deleted.");
     return;
   }
   if(b.dataset.edit)return contacts(b.dataset.edit);
